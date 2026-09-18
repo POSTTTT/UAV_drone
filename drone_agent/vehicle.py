@@ -47,11 +47,13 @@ def offset_location(lat, lon, north_m, east_m):
 
 
 class Vehicle:
-    def __init__(self, connection="tcp:127.0.0.1:5762", timeout=30):
-        self.conn = mavutil.mavlink_connection(connection, source_system=254, source_component=190)
+    def __init__(self, connection="tcp:127.0.0.1:5762", timeout=30, baud=115200, stream_hz=5):
+        """connection: SITL "tcp:host:port", or a serial port such as "/dev/ttyUSB0" (uses baud)."""
+        self.conn = mavutil.mavlink_connection(connection, baud=baud, source_system=254, source_component=190)
         hb = self.conn.wait_heartbeat(timeout=timeout)
         if hb is None:
-            raise VehicleError(f"No heartbeat from {connection}. Are Gazebo and SITL running?")
+            raise VehicleError(f"No heartbeat from {connection}. For SITL: are Gazebo and SITL running? "
+                               "For a radio: is the drone powered, and do both radios show a solid link LED?")
         self.sysid = self.conn.target_system
         self.compid = self.conn.target_component
 
@@ -65,7 +67,7 @@ class Vehicle:
         self._reader.start()
 
         self.conn.mav.request_data_stream_send(
-            self.sysid, self.compid, mavlink.MAV_DATA_STREAM_ALL, 5, 1
+            self.sysid, self.compid, mavlink.MAV_DATA_STREAM_ALL, stream_hz, 1
         )
         self._wait(
             lambda: self._get("HEARTBEAT") is not None and self._get("GLOBAL_POSITION_INT") is not None,

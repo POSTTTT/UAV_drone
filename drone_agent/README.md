@@ -34,7 +34,7 @@ The agent uses SITL's **spare** MAVLink port (5762), so MAVProxy and QGroundCont
 | `tools.py` | Tool functions, JSON schemas, safety limits, system prompt (no LLM dependency) |
 | `vehicle.py` | pymavlink wrapper: connection, state cache, mode/arm/takeoff/goto/land |
 | `test_vehicle.py` | Flies a short mission **without** any LLM, to check the drone link |
-| `requirements.txt` | Python dependencies (`openai` client library, `pymavlink`) |
+| `requirements.txt` | Python dependencies (`openai` client library, `pymavlink`, `pyserial` for the radio) |
 
 ## Tools the model can call
 
@@ -165,6 +165,9 @@ python3 -m venv .venv
 | `--base-url` | `LLM_BASE_URL` | `http://192.168.64.1:11434/v1` (Ollama on the Mac) |
 | `--api-key` | `LLM_API_KEY` | `ollama` (ignored by Ollama) |
 | `--connect` | | `tcp:127.0.0.1:5762` (SITL spare MAVLink port) |
+| `--radio` | | off; flies a real drone through a telemetry radio instead of SITL |
+| `--device` | | `/dev/ttyUSB0` (radio serial port, with `--radio`) |
+| `--baud` | | `57600` (must match the Cube's `SERIALx_BAUD`, with `--radio`) |
 
 ### Other backends
 
@@ -181,6 +184,58 @@ python3 -m venv .venv
 # Hosted OpenAI-compatible provider
 LLM_API_KEY=... ../.venv/bin/python agent.py --base-url https://openrouter.ai/api/v1 --model <model>
 ```
+
+## Real drone: Cube Orange+ over a telemetry radio
+
+The SITL setup above stays the default. Add `--radio` to fly a real Cube Orange+ through a SiK-style telemetry radio (Holybro SiK, RFD900x, ...) plugged into USB.
+
+**One-time setup**
+
+1. Connect the air radio to the Cube's **TELEM1** port. The defaults work: `SERIAL1_PROTOCOL = 2` (MAVLink2) and `SERIAL1_BAUD = 57` (57600).
+2. Pair the two radios (both link LEDs solid green) and plug the ground radio into the computer.
+3. **VM only:** pass the USB radio through to the Ubuntu VM (in UTM: the USB icon in the toolbar, then pick the radio).
+4. Give your user serial-port access, then log out and back in:
+
+   ```bash
+   sudo usermod -aG dialout $USER
+   ```
+
+5. Find the port. It is usually `/dev/ttyUSB0`:
+
+   ```bash
+   ls /dev/ttyUSB* /dev/ttyACM* /dev/serial/by-id/
+   ```
+
+**Run**
+
+```bash
+cd ~/UAV_drone/drone_agent
+../.venv/bin/python agent.py --radio                                  # /dev/ttyUSB0 at 57600
+../.venv/bin/python agent.py --radio --device /dev/ttyUSB1 --baud 57600
+../.venv/bin/python agent.py --radio --device /dev/ttyACM0            # Cube plugged in directly by USB (bench tests, no props)
+```
+
+**Watching in QGroundControl at the same time**
+
+Only one program can open the serial port. Run MAVProxy on the radio and forward it to both QGroundControl and the agent:
+
+```bash
+mavproxy.py --master=/dev/ttyUSB0 --baudrate 57600 \
+  --out=udp:127.0.0.1:14550 --out=udp:127.0.0.1:14551
+../.venv/bin/python agent.py --connect udpin:127.0.0.1:14551
+```
+
+With `--connect`, the agent uses SITL's 5 Hz telemetry rate. `--radio` uses 2 Hz so a 57600 baud link does not saturate.
+
+**Before every real flight**
+
+- Test the same instructions in SITL first.
+- Fly outdoors with a good GPS fix, in an open area, away from people.
+- Keep the RC transmitter in hand. Switching the flight mode on the transmitter (e.g. to LOITER or LAND) overrides the agent.
+- Set failsafes in QGroundControl: RC loss, battery, and GCS loss (`FS_GCS_ENABLE`) in case the radio link drops.
+- Consider a geofence (`FENCE_ENABLE`) as a second limit alongside the agent's 50 m altitude and 300 m distance limits.
+- The Cube's safety switch must be pressed before it arms, unless `BRD_SAFETY_DEFLT = 0`.
+- `test_vehicle.py` is for SITL only. It connects to SITL and flies without asking.
 
 ## Choosing a model
 

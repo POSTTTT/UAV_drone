@@ -197,7 +197,7 @@ NUMBER_PARAMS = {
     for p, spec in s["function"]["parameters"]["properties"].items()
 }
 
-SYSTEM_PROMPT = f"""You control a simulated quadcopter (ArduPilot SITL + Gazebo) using the provided tools.
+SYSTEM_PROMPT = f"""You control an ArduPilot quadcopter (simulated or real) using the provided tools.
 The operator gives instructions in plain language. Carry them out by calling tools.
 
 Rules:

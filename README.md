@@ -67,6 +67,8 @@ cd ~/UAV_drone/drone_agent
 
 To follow the flight in QGroundControl, open `~/Downloads/QGroundControl-*.AppImage`.
 
+To fly a real Cube Orange+ through a telemetry radio instead of SITL, add `--radio`. Read [Real drone: Cube Orange+ over a telemetry radio](drone_agent/README.md#real-drone-cube-orange-over-a-telemetry-radio) first.
+
 > Keep both `--add-param-file` options. Without them, the drone does not arm and reports `PreArm: Motors: Check frame class and type`. See [`simulation-guide.md`](simulation-guide.md#troubleshooting).
 
 ## Safety note

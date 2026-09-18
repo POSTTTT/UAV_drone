@@ -1,4 +1,4 @@
-"""Natural-language drone pilot: a local LLM (Ollama by default) + ArduPilot SITL.
+"""Natural-language drone pilot: a local LLM (Ollama by default) + ArduPilot (SITL or a real Cube Orange+).
 
 Works with any server that speaks the OpenAI-compatible chat API with tool calling:
 Ollama, LM Studio, llama.cpp server, vLLM, or a hosted provider.
@@ -7,6 +7,8 @@ Usage:
     python agent.py                                   # interactive chat, Ollama on the Mac host
     python agent.py "take off to 5 m and land"        # single instruction
     python agent.py --model llama3.1:8b --base-url http://192.168.1.10:11434/v1
+    python agent.py --radio                           # real drone via USB telemetry radio on /dev/ttyUSB0
+    python agent.py --radio --device /dev/ttyACM0 --baud 115200
 """
 
 import argparse
@@ -73,13 +75,31 @@ def main():
                         help="API key if the server needs one (env LLM_API_KEY; Ollama ignores it)")
     parser.add_argument("--connect", default="tcp:127.0.0.1:5762",
                         help="MAVLink connection string (default: SITL's spare port tcp:127.0.0.1:5762)")
+    parser.add_argument("--radio", action="store_true",
+                        help="fly a real vehicle (Cube Orange+) through a telemetry radio instead of SITL")
+    parser.add_argument("--device", default="/dev/ttyUSB0",
+                        help="serial port of the telemetry radio, used with --radio (default: /dev/ttyUSB0)")
+    parser.add_argument("--baud", type=int, default=57600,
+                        help="serial baud rate, used with --radio; must match SERIALx_BAUD (default: 57600)")
     args = parser.parse_args()
 
-    print(f"Connecting to vehicle on {args.connect} ...")
+    if args.radio:
+        connection = args.device
+        print("*** REAL VEHICLE: propellers will spin. Keep clear and keep the RC transmitter "
+              "in hand to take over (switch to LOITER/LAND or disarm). ***")
+    else:
+        connection = args.connect
+    print(f"Connecting to vehicle on {connection} ...")
     try:
-        vehicle = Vehicle(args.connect)
+        # ponytail: 2 Hz streams keep a 57600 baud radio link from saturating; raise if the link is faster
+        vehicle = Vehicle(connection, baud=args.baud, stream_hz=2) if args.radio else Vehicle(connection)
     except (VehicleError, OSError) as e:
-        sys.exit(f"Could not connect: {e}")
+        hint = ""
+        if "Permission denied" in str(e):
+            hint = " Add yourself to the dialout group (sudo usermod -aG dialout $USER), then log out and in."
+        elif args.radio and "No such file" in str(e):
+            hint = " Is the radio plugged in? Check: ls /dev/ttyUSB* /dev/ttyACM* /dev/serial/by-id/"
+        sys.exit(f"Could not connect: {e}.{hint}")
     print(f"Connected. Mode {vehicle.mode}, armed={vehicle.armed}")
     print(f"LLM: {args.model} at {args.base_url}")
 
